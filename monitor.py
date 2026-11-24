@@ -165,14 +165,15 @@ def github(method, path, payload=None):
         return json.load(response)
 
 
-def notify(report, test=False):
+def notify(report, test=False, issue_number=None):
     repo = os.environ['GITHUB_REPOSITORY']
     # Only this separate public monitor repository is permitted.
     if repo != 'testtestingg/doura-uptime':
         raise ValueError('Unexpected monitoring repository')
     marker = MARKER + ('<!-- alert-test -->' if test else '<!-- production -->')
     issues = github('GET', f'/repos/{repo}/issues?state=open&creator=github-actions%5Bbot%5D&per_page=100')
-    existing = next((item for item in issues if marker in (item.get('body') or '')), None)
+    existing = ({'number': issue_number} if issue_number else
+                next((item for item in issues if marker in (item.get('body') or '')), None))
     action = incident_action(report['checks'], existing)
     run = f"https://github.com/{repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
     if action == 'open':
@@ -196,8 +197,10 @@ if __name__ == '__main__':
     if os.environ.get('GH_TOKEN'):
         if test:
             test_report = {**report, 'checks': [{'name': 'intentional alert delivery test', 'ok': False, 'error': 'TEST'}]}
-            notify(test_report, test=True)
-            notify({**report, 'checks': [{'name': 'intentional recovery delivery test', 'ok': True}]}, test=True)
+            issue_number = notify(test_report, test=True)
+            # GitHub's issue list can lag a create. Use the returned number
+            # rather than depending on an immediately consistent list result.
+            notify({**report, 'checks': [{'name': 'intentional recovery delivery test', 'ok': True}]}, test=True, issue_number=issue_number)
         else:
             notify(report)
     raise SystemExit(0 if all(row['ok'] for row in report['checks']) else 1)

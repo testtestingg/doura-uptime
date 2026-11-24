@@ -1,4 +1,5 @@
 import unittest
+import os
 import urllib.request
 from unittest.mock import patch
 import monitor
@@ -40,6 +41,12 @@ class MonitorTests(unittest.TestCase):
         with patch.object(monitor.time, 'sleep'), patch('monitor.html_check', side_effect=[OSError(), None]) as probe:
             self.assertTrue(monitor.run_check('example', lambda: probe())['ok'])
             self.assertEqual(probe.call_count, 2)
+
+    def test_delivery_test_recovers_even_when_issue_list_is_stale(self):
+        with patch.dict(os.environ, {'GITHUB_REPOSITORY': 'testtestingg/doura-uptime', 'GITHUB_RUN_ID': '1'}), patch.object(monitor, 'github', side_effect=[[], {}, {}]) as api:
+            monitor.notify({'checks': [{'ok': True}], 'checked_at': '2026-11-24'}, test=True, issue_number=12)
+        self.assertEqual(api.call_args_list[-1].args[1], '/repos/testtestingg/doura-uptime/issues/12')
+        self.assertEqual(api.call_args_list[-1].args[2]['state'], 'closed')
 
     def test_failure_never_copies_request_secret_into_report(self):
         with patch.object(monitor.time, 'sleep'):
